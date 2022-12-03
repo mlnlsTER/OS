@@ -1,54 +1,130 @@
 #include <stdio.h>
+#include <pthread.h>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 #include <unistd.h>
-#include <pthread.h>
 
-void * thread_function(void * thread_arg) { //Неотменяемый поток
-    pthread_setcancelstate(PTHREAD_CANCEL_DISABLE, NULL); //Делаем поток неотменяемым
-    
-    int i, n = *(int*) thread_arg;
+#define TIME 5
+#define WRITER 5
+#define READER 10
 
-    for (i = 0; i < 2 * n; i++)
-    {
-        fprintf(stderr, "\e[1;1H\e[2J"); //Чистим консольку для удобства
-        fprintf(stderr, "%d\n", i); //Выводим счётчик
+int *global;
+pthread_rwlock_t rwlock;
 
-        sleep(1);
-    }
-
-    return NULL;
+void *print(void *arg){
+  int size = *(int*) arg;
+  int i;
+  time_t t = time(NULL) + TIME;
+  while (t > time(NULL)) {
+    for (i = 0; i < size; i++){
+      printf("%d ", global[i]);
+    }  
+    printf("\n");
+    sleep(1);
+  }
+  pthread_exit(NULL);
 }
 
-int main(int argc, char *argv[]) {
-    if (argc < 2) //Если аргументов в командной строке мало то ошибка
-	{
-		fprintf(stderr, "Too few arguments\n");
-		return 1;
-	}
-    int n = atoi(argv[1]); //Считываем то что написали в консольке
-
-    void * result;
-    pthread_t thread;
-
-    pthread_create(&thread, NULL, &thread_function, &n); //Создаем поток
-
-    sleep(n); //Спим столько секунд сколько написали
-    pthread_cancel(thread); //Затем отменяем поток
-
-    if (!pthread_equal(pthread_self(), thread)) //Так надо потому что было в примере (если несколько потоков сделали проверка на именно тот который нужен нам)
-    {
-        pthread_join(thread, &result) ;
+void *GlWrite(void *arg){
+  int n = *(int*) arg;
+  time_t t = time(NULL) + TIME;
+  while (t > time(NULL)){
+    pthread_rwlock_wrlock(&rwlock);
+    srand(time(NULL));
+    int r = rand() % n;
+    int value = (rand() % 10) + 1;
+    if (global[r] == 0){
+      global[r] = value;
+      printf("Write: %d\n", global[r]);  
     }
+    pthread_rwlock_unlock(&rwlock);
+    sleep(1);
+  }
+}
 
-    if (result == PTHREAD_CANCELED) //Если поток был отменен то написать шо отменен, иначе написать шо дефолтно закончилось
-    {
-        fprintf(stderr, "Canceled\n");
+void *GlRead(void *arg){
+  int n = *(int*) arg;
+  time_t t = time(NULL) + TIME;
+  while (t > time(NULL)){
+    sleep(3);
+    pthread_rwlock_rdlock(&rwlock);
+    srand(time(NULL));
+    int r = rand() % n;
+    if(global[r] != 0){
+      printf("Read: %d\n",global[r]);
+      global[r] = 0;  
     }
-    else
-    {
-        fprintf(stderr, "Default\n");
+    pthread_rwlock_unlock(&rwlock);
+  } 
+}
+
+int main(int argc, char **argv){
+  char *opts = "e:";
+  int n = 10;
+  int opt;
+  while ((opt = getopt(argc, argv, opts)) != -1){
+    switch(opt){
+      case 'e':
+        n = atoi(optarg);
+        break;
+      default: {
+        printf("Неизвестная команда...\n");
+        break;
+      };     
     }
-    
-    return 0;
+  }
+
+  global = malloc(sizeof(int) * n);
+
+  pthread_attr_t attr;
+  pthread_t pt;
+  pthread_attr_init(&attr);
+  pthread_attr_setdetachstate(&attr, PTHREAD_CREATE_DETACHED);
+  pthread_create(&pt, &attr, &print, &n);
+  pthread_attr_destroy(&attr);
+  
+  pthread_t *wr, *rd; 
+  wr = malloc(sizeof(pthread_t) * WRITER);
+  rd = malloc(sizeof(pthread_t) * READER);
+
+  pthread_rwlock_init(&rwlock, NULL);
+
+  int i;
+  for (i = 0; i < WRITER; i++){
+    if (pthread_create(&wr[i], NULL, &GlWrite, &n) != 0) {
+        fprintf(stderr, "Error (thread)\n");
+        return 1;
+      }
+  }
+
+  for (i = 0; i < READER; i++){
+    if (pthread_create(&rd[i], NULL, &GlRead, &n) != 0) {
+        fprintf(stderr, "Error (thread)\n");
+        return 1;
+      }
+  }
+
+  for(i = 0; i < WRITER; ++i){
+    if (pthread_join(wr[i], NULL) != 0) {
+      printf("Error\n");   
+    }
+  }
+
+  for(i = 0; i < READER; ++i){
+    if (pthread_join(rd[i], NULL) != 0) {
+      printf("Error\n");   
+    }
+  }
+
+  for (i = 0; i < n; i++){
+    printf("%d ", global[i]);
+  }
+  printf("\n");
+  
+  pthread_rwlock_destroy(&rwlock);
+  free(global);
+  free(wr);
+  free(rd);
+  return 0;
 }
