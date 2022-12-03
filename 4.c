@@ -8,8 +8,8 @@
 int n = 100000;
 double currentPI = 0;
 
-void * thread_function() { //PI
-    //pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, NULL); //Делаем поток синхронно-отменяемым (по гайду)
+void * thread_function(void * arg) {
+    pthread_setcancelstate(PTHREAD_CANCEL_DEFERRED, NULL); //Делаем поток синхронно-отменяемым
 
     int i, divider = 1;
     int old_cancel_state;
@@ -23,11 +23,10 @@ void * thread_function() { //PI
 
         pthread_setcancelstate(old_cancel_state, NULL); //Возвращаем старый тип отмены
 
-        fprintf(stderr, "%lf", currentPI * 4); //Выводим значение
-        fprintf(stderr, "\e[1;1H\e[2J"); //Чистим консольку для удобства
+        fprintf(stderr, "%lf\n", currentPI * 4); //Выводим значение
     }
 
-    fprintf(stderr, "%lf -- Calculations completed!", currentPI * 4);
+    fprintf(stderr, "%lf -- Calculations completed!\n", currentPI * 4);
 
     return NULL;
 }
@@ -59,8 +58,7 @@ int main(int argc, char *argv[]) {
     }
     else
     {
-        fprintf(stderr, "\e[1;1H\e[2J"); //Чистим консольку для удобства
-        fprintf(stderr, "Result of calculations: %lf", currentPI * 4);
+        fprintf(stderr, "Result of calculations: %lf\n", currentPI * 4);
     }
 
     return 0;
